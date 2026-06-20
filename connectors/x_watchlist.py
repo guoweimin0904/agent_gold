@@ -1,4 +1,5 @@
 """X/Twitter watchlist — read-only monitoring with real missing/disabled states."""
+from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone

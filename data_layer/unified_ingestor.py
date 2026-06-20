@@ -13,6 +13,7 @@ from connectors.coingecko import CoinGeckoData
 from connectors.news_source import NewsData
 from connectors.x_watchlist import XWatchlistData
 from data_layer.market_snapshot import MarketSnapshot, SourceMetadata
+from data_layer.news_collector import MultiSourceNewsCollector
 
 logger = logging.getLogger("data_layer.ingestor")
 
@@ -26,6 +27,7 @@ class DataIngestor:
         self.binance = BinanceData()
         self.coingecko = CoinGeckoData()
         self.news = NewsData()
+        self.multi_news = MultiSourceNewsCollector()
         # X requires bearer token — will auto-mark missing without it
         self.xwatch = XWatchlistData(bearer_token=None)
 
@@ -87,16 +89,42 @@ class DataIngestor:
 
         meta_list.append(cg_meta)
 
-        # ── 3. News (aggregated) ─────────────────────────────────
+        # ── 3. News — 双路采集: 加密新闻 + 中文财经新闻 ────────
         news_meta = SourceMetadata(source="aggregated", status="ok")
+
+        # 3a. 加密新闻 (CoinGecko / CryptoPanic)
         try:
-            news_items = self.news.fetch_all(hours=24, limit=20)
-            news_meta.news_count = len(news_items)
-            snapshot.news.extend(item.to_dict() for item in news_items)
+            crypto_news = self.news.fetch_all(hours=24, limit=20)
+            news_meta.news_count += len(crypto_news)
+            snapshot.news.extend(item.to_dict() for item in crypto_news)
+            logger.info("加密新闻: %d 条 (CoinGecko/CryptoPanic)", len(crypto_news))
         except Exception as e:
-            logger.error("News fetch failed: %s", e)
+            logger.error("加密新闻采集失败: %s", e)
             news_meta.status = "error"
             news_meta.error_message = str(e)
+
+        # 3b. 中文财经新闻 (AKShare → Tushare → RSSHub → 缓存兜底)
+        multi_meta = SourceMetadata(source="multi_source_cn", status="ok")
+        try:
+            cn_news = self.multi_news.fetch_all()
+            if cn_news == "missing":
+                multi_meta.status = "missing"
+                multi_meta.error_message = "全部中文新闻源失效且无缓存 (AKShare/Tushare/RSSHub/缓存)"
+                logger.warning("中文新闻采集: 全部数据源失效，标记为 missing")
+            elif isinstance(cn_news, list):
+                if cn_news and len(cn_news) > 0 and cn_news[0].get("status") == "fallback":
+                    multi_meta.status = "fallback"
+                    multi_meta.error_message = "公网源失效，使用内置测试数据"
+                    logger.warning("中文新闻: 使用内置测试数据 (公网源全部不可用)")
+                multi_meta.news_count = len(cn_news)
+                snapshot.news.extend(cn_news)
+                logger.info("中文新闻: %d 条 (AKShare/Tushare/RSSHub/缓存/内置)", len(cn_news))
+        except Exception as e:
+            logger.error("中文新闻采集失败: %s", e)
+            multi_meta.status = "error"
+            multi_meta.error_message = str(e)
+        meta_list.append(multi_meta)
+
         meta_list.append(news_meta)
 
         # ── 4. X/Twitter ─────────────────────────────────────────

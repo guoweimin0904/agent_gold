@@ -1,4 +1,5 @@
 """Risk control — position sizing, max loss limits, portfolio-level checks."""
+from __future__ import annotations
 
 import datetime as dt
 import json

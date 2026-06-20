@@ -1,4 +1,5 @@
 """Binance REST connector — READ-ONLY Kline & ticker data. No order capability."""
+from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone

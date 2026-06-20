@@ -10,6 +10,7 @@ Aggregation:
   raw_total = Σ sub_scores  (max 600)
   final_score = (raw_total - risk_deduction) / 6  (normalised to 0-100)
 """
+from __future__ import annotations
 
 import json
 import logging

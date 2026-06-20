@@ -1,4 +1,5 @@
 """Paper trading — simulate trades without real money."""
+from __future__ import annotations
 
 import json
 import logging

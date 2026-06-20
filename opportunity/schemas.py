@@ -3,6 +3,7 @@
 Each scanner produces one OpportunitySignal.
 The resonance detector produces ResonanceSignal.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone

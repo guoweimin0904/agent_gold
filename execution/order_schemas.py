@@ -2,6 +2,7 @@
 
 Only emitted when ALL 7 security checks pass.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone

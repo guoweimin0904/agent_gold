@@ -3,6 +3,7 @@
 When policy_score is high (≥70) AND fund_flow_score confirms (≥65),
 the signal_strength is maximum and the candidate is flagged.
 """
+from __future__ import annotations
 
 import logging
 from typing import Any

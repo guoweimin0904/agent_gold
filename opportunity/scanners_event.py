@@ -1,4 +1,5 @@
 """Scanner: 交易所上币 (listing) + 黑天鹅 (blackswan) + 情绪极端 (sentiment extreme)."""
+from __future__ import annotations
 
 import logging
 from typing import Any

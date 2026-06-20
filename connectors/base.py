@@ -1,5 +1,7 @@
 """Shared base: retry wrapper + unified Kline/RawData models + logging."""
 
+from __future__ import annotations
+
 import functools
 import logging
 import random

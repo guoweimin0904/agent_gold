@@ -1,4 +1,5 @@
 """Position sizing — calculate trade size based on volatility & risk tolerance."""
+from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any

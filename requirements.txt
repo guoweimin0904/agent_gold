@@ -3,3 +3,8 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 pandas>=2.0.0
 numpy>=1.24.0
+
+# 多源新闻采集 (可选依赖 — 未安装的源自动降级跳过)
+akshare>=1.14.0            # AKShare 财经新闻 (主数据源)
+tushare>=1.4.0             # Tushare 财经新闻 (备用数据源，需配置 TUSHARE_TOKEN)
+feedparser>=6.0.0          # RSSHub RSS 解析 (兜底数据源，需本地部署 RSSHub)

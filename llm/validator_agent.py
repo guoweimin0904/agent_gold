@@ -8,6 +8,7 @@ Cross-checks:
 - position_suggestion vs risk limits
 - No "必涨", "梭哈", "稳赚" in any text field
 """
+from __future__ import annotations
 
 import logging
 import re

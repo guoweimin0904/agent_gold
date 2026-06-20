@@ -11,6 +11,7 @@ Checks performed:
 6. position_limit     — 仓位是否超限？
 7. human_confirm      — 是否需要人工确认？
 """
+from __future__ import annotations
 
 import json
 import logging

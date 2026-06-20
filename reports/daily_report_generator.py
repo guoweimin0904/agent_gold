@@ -19,6 +19,7 @@ Combines data from:
 6. 风控复核结论
 7. 复盘备注
 """
+from __future__ import annotations
 
 import json
 import logging

@@ -11,6 +11,7 @@ Rules:
 
 如果任何一项不满足，输出"不执行"。
 """
+from __future__ import annotations
 
 import logging
 import re

@@ -1,4 +1,5 @@
 """Daily report generator — summary of trades, PnL, risk metrics."""
+from __future__ import annotations
 
 import json
 import logging

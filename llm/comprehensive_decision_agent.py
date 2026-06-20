@@ -5,6 +5,7 @@ Uses a deterministic rule engine + the scoring orchestrator output.
 
 No "必涨", "梭哈", "稳赚" — ever.
 """
+from __future__ import annotations
 
 import json
 import logging

@@ -1,4 +1,5 @@
 """CoinGecko connector — market overview & price data only. Read-only."""
+from __future__ import annotations
 
 import logging
 from typing import Any

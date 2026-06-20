@@ -2,6 +2,7 @@
 
 All functions operate on TradeRecord dicts. No look-ahead, no future data.
 """
+from __future__ import annotations
 
 from typing import Any
 

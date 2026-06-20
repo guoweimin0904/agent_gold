@@ -2,6 +2,7 @@
 
 All return a ScoredDimension with score 0-100, reason, and data_available flag.
 """
+from __future__ import annotations
 
 import logging
 from typing import Any

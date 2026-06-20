@@ -1,4 +1,5 @@
 """Scanner: 政策驱动 (policy) + 业绩/公告 (earnings)."""
+from __future__ import annotations
 
 import logging
 from typing import Any

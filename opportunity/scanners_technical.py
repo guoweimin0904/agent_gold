@@ -1,4 +1,5 @@
 """Scanner: 突破行情 (breakout) + 资金驱动 (fund_flow)."""
+from __future__ import annotations
 
 import logging
 from typing import Any
