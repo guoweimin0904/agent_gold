@@ -1,6 +1,7 @@
 """A-Share technical screener — trend, momentum, volume, support/resistance.
 
-Uses kline data in the same unified format as the rest of the system.
+修复 BUG2: 趋势评分改用 20日中长期 + 5日短期双轨评分，
+避免中长期空头趋势压死短期反弹行情。
 """
 
 import logging
@@ -18,7 +19,7 @@ def score_technical(
     """
     A-share technical scoring.
 
-    trend: MA alignment, slope
+    trend (双轨): 20日中长期斜率 + 5日短期斜率加权平均
     momentum: RSI, MACD
     volume: volume ratio vs 20d avg
     support/resist: BB zone, recent range
@@ -36,26 +37,48 @@ def score_technical(
     recent = closes[-1]
     reasons: list[str] = []
 
-    # ── Trend score (0-100) ──
-    trend = 50.0
-    slope = (closes[-1] - closes[0]) / closes[0] * 100
-    if slope > 8:
-        trend = 85
-        reasons.append(f"强势上涨({slope:+.1f}%)")
-    elif slope > 3:
-        trend = 70
-        reasons.append(f"趋势向上({slope:+.1f}%)")
-    elif slope > 0:
-        trend = 55
-    elif slope > -3:
-        trend = 40
-        reasons.append(f"弱势下跌({slope:.1f}%)")
-    elif slope > -8:
-        trend = 25
-        reasons.append(f"下跌趋势({slope:.1f}%)")
+    # ── BUG2修复: 双轨趋势评分 ──
+    # 中长期(20日)斜率
+    slope_20d = (closes[-1] - closes[-20]) / closes[-20] * 100 if len(closes) >= 20 else 0
+    # 短期(5日)斜率
+    slope_5d = (closes[-1] - closes[-5]) / closes[-5] * 100 if len(closes) >= 5 else 0
+
+    # 中长期趋势分 (0-100)
+    if slope_20d > 8:
+        trend_long = 85
+        reasons.append(f"中期强势({slope_20d:+.1f}%)")
+    elif slope_20d > 3:
+        trend_long = 70
+        reasons.append(f"中期向上({slope_20d:+.1f}%)")
+    elif slope_20d > 0:
+        trend_long = 55
+    elif slope_20d > -5:
+        trend_long = 40
+        reasons.append(f"中期偏弱({slope_20d:.1f}%)")
+    elif slope_20d > -12:
+        trend_long = 25
+        reasons.append(f"中期下跌({slope_20d:.1f}%)")
     else:
-        trend = 10
-        reasons.append(f"暴跌({slope:.1f}%)")
+        trend_long = 10
+
+    # 短期趋势分 (0-100) — 捕捉反弹
+    if slope_5d > 6:
+        trend_short = 80
+        reasons.append(f"短期强势反弹+{slope_5d:.1f}%")
+    elif slope_5d > 2:
+        trend_short = 65
+        reasons.append(f"短期企稳+{slope_5d:.1f}%")
+    elif slope_5d > 0:
+        trend_short = 55
+    elif slope_5d > -3:
+        trend_short = 45
+        reasons.append(f"短期偏弱{slope_5d:.1f}%")
+    else:
+        trend_short = 25
+        reasons.append(f"短期下跌{slope_5d:.1f}%")
+
+    # 双轨加权：中长期60% + 短期40%
+    trend = trend_long * 0.60 + trend_short * 0.40
 
     # MA cross (if indicators available)
     if indicators:
@@ -66,7 +89,7 @@ def score_technical(
                 trend += 8
                 reasons.append("5日线>20日线")
             else:
-                trend -= 5
+                trend -= 3
 
     # ── Momentum score ──
     momentum = 50.0

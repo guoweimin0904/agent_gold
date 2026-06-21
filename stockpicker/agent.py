@@ -59,6 +59,8 @@ class StockPickerAgent:
         policy_report: dict[str, Any] | None = None,
         news_sentiment: float = 50.0,
         fund_flow_score: float = 50.0,
+        # BUG3: 景气度修正因子（来自analyze_from_akshare自动计算）
+        industry_boom_bonus: float = 0.0,
     ) -> StockAnalysisReport:
         """Run complete A-share stock analysis."""
         logger.info("Analyzing %s (%s)", stock_code, stock_name or "?")
@@ -99,6 +101,11 @@ class StockPickerAgent:
             short_term_event_score=news_sentiment,
             short_term_momentum_bonus=short_momentum,
         )
+
+        # BUG3: 景气度修正加分
+        if industry_boom_bonus > 0:
+            composite = min(98, composite + industry_boom_bonus)
+            reasons.append(f"景气度加分(+{industry_boom_bonus:.0f})")
 
         # 方案A: 热度因子（不参与评分，仅辅助标签）
         heat = compute_heat_factor(klines, composite_score=composite)
@@ -264,10 +271,68 @@ class StockPickerAgent:
         else:
             fund_score = 50
 
-        # 6. 板块确定
+        # 6. 板块确定 + BUG1修复: 自动政策检测
         market_type = "科创板" if code.startswith("688") else \
                       "创业板" if code.startswith("30") else \
                       "北交所" if code.startswith("8") else "主板"
+
+        # ── BUG1: 自动政策检测 ──
+        # 如果外部未传入 policy_report，根据板块自动匹配国家级政策
+        resolved_policy = policy_report
+        if resolved_policy is None:
+            # 检测半导体/科技相关板块 → 自动注入产业扶持政策
+            from stockpicker.sector_mapper import SectorMapper
+            sm = SectorMapper()
+            detected_sector = sm.map_stock_to_sector(code, name)
+            # 定义政策关键词 → 自动生成政策报告
+            auto_policy_map = {
+                "半导体": ("工信部/国务院集成电路产业扶持政策", "产业扶持", 85),
+                "人工智能": ("国务院新一代AI发展规划", "科技/创新", 80),
+                "新能源": ("国务院新能源产业发展规划", "产业扶持", 78),
+                "光伏": ("国家能源局光伏产业支持政策", "产业扶持", 75),
+                "军工": ("国防军工建设规划", "产业扶持", 72),
+                "计算机": ("国产替代/信创政策", "科技/创新", 72),
+                "通信": ("5G/6G新基建规划", "科技/创新", 70),
+                "医药": ("医药集采/创新药政策", "产业扶持", 65),
+            }
+
+            if detected_sector in auto_policy_map:
+                title, ptype, pscore = auto_policy_map[detected_sector]
+                from apolicy.agent import PolicyAnalysisAgent as _PA
+                _pa = _PA()
+                resolved_report = _pa.analyze(
+                    title,
+                    f"{title}，国家级政策，{ptype}类型",
+                    "https://www.gov.cn/zhengce/auto_policy",
+                )
+                resolved_policy = resolved_report.to_dict()
+                logger.info("BUG1修复: 自动注入%s板块政策(%s) score=%d",
+                            detected_sector, ptype, pscore)
+            else:
+                # 其他板块用默认中性政策
+                from apolicy.decision_schemas import PolicyAnalysisReport as _PR
+                resolved_policy = _PR(
+                    policy_title="通用市场中性政策",
+                    source="默认",
+                    policy_level="未明确",
+                    trading_score=50,
+                    is_tradeable=False,
+                    overall_direction="中性",
+                ).to_dict()
+
+        # ── BUG3: 景气度修正因子 ──
+        # 从基本面利润增长数据反推行业景气度
+        # 如果增长性高分 + 趋势低分 = 景气反转被低估
+        profit_growth_raw = fundamentals_raw.get("profit_growth", 0)
+        rev_growth_raw = fundamentals_raw.get("revenue_growth", 0)
+        if isinstance(profit_growth_raw, (int, float)) and profit_growth_raw > 20:
+            industry_boom_bonus = 3.0  # 利润高速增长→景气加分
+            logger.info("BUG3修复: 景气度加分+%.1f(利润增长%.0f%%)",
+                        industry_boom_bonus, profit_growth_raw)
+        elif isinstance(rev_growth_raw, (int, float)) and rev_growth_raw > 15:
+            industry_boom_bonus = 2.0
+        else:
+            industry_boom_bonus = 0.0
 
         # 7. 市场情绪
         from connectors.ashare_news import get_market_sentiment
@@ -283,9 +348,10 @@ class StockPickerAgent:
             fundamentals=fundamentals,
             klines=recent_klines,
             indicators=indicators,
-            policy_report=policy_report,
+            policy_report=resolved_policy,   # BUG1: 使用自动检测后的政策
             news_sentiment=news_sentiment,
             fund_flow_score=round(fund_score, 1),
+            industry_boom_bonus=industry_boom_bonus,  # BUG3: 景气度加分
         )
 
     @staticmethod
