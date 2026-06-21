@@ -98,8 +98,10 @@ def compute_heat_factor(
     # ── 涨停/跌停次数 ──
     limit_up = 0
     limit_down = 0
-    for k in recent_5:
-        chg = (float(k["close"]) - float(k["open"])) / float(k["open"]) * 100
+    for i in range(1, len(recent_5)):
+        prev_close = float(recent_5[i-1]["close"])
+        curr_close = float(recent_5[i]["close"])
+        chg = (curr_close - prev_close) / prev_close * 100 if prev_close > 0 else 0
         if chg >= 9.5:
             limit_up += 1
         elif chg <= -9.5:

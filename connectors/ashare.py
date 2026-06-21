@@ -65,14 +65,19 @@ def _parse_sina_quote(data: str) -> dict[str, Any]:
 
 
 # ── 新浪K线API ────────────────────────────────────────────────────
-
 def _sina_klines(symbol: str, limit: int = 60) -> list[dict[str, Any]]:
+    """Fetch K-Line data from Sina Finance API.
+
+    Sina datalen 最大值为1023（约4年日K线）。
+    直接用1023保证覆盖任意长度的请求，然后截取需要的数量。
+    """
     sina_sym = _sina_symbol(symbol)
+    # 用最大 datalen 确保覆盖所有数据
     url = (f"https://money.finance.sina.com.cn/quotes_service/api/jsonp_v2.php/"
            f"var%20_%20=new%20Date().getTime()/CN_MarketData.getKLineData"
-           f"?symbol={sina_sym}&scale=240&ma=no&datalen={limit}")
+           f"?symbol={sina_sym}&scale=240&ma=no&datalen=1023")
     try:
-        resp = _SESSION.get(url, timeout=10)
+        resp = _SESSION.get(url, timeout=15)
         resp.encoding = "utf-8"
         text = resp.text
         import json as _json
@@ -90,8 +95,11 @@ def _sina_klines(symbol: str, limit: int = 60) -> list[dict[str, Any]]:
                 "close": float(item["close"]),
                 "volume": float(item["volume"]),
             })
-        records.reverse()
-        logger.info("新浪K线 %s: %d 条", symbol, len(records))
+        # Sina 返回升序（最早在前），不需要反转
+        # 截取最后 limit 条（最新数据）
+        if len(records) > limit:
+            records = records[-limit:]
+        logger.info("新浪K线 %s: 返回%d条, 截取%d条", symbol, len(data), len(records))
         return records
     except Exception as e:
         logger.error("新浪K线 %s 失败: %s", symbol, e)
