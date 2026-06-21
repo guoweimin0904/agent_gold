@@ -95,6 +95,14 @@ class ComprehensiveDecisionAgent:
         # ── 2. Determine market_state from klines ────────────────
         market_state = self._detect_market_state(klines, latest_indicators)
 
+        # ── 2b. 长周期偏向 + 多时间框架 ──────────────────────────
+        long_cycle_bias = self._detect_long_cycle_bias(klines)
+        mtf_score = self._compute_multi_timeframe_score(klines)
+        logger.info(
+            "长周期偏向: %s | 多时间框架一致性: %.0f%%",
+            long_cycle_bias, mtf_score * 100,
+        )
+
         # ── 3. News direction ────────────────────────────────────
         news_direction = self._extract_news_direction(news_report)
 
@@ -111,6 +119,7 @@ class ComprehensiveDecisionAgent:
             backtest_win_rate=bt_win_rate,
             news_direction=news_direction,
             scoring_decision=scoring_report.decision,
+            long_cycle_bias=long_cycle_bias,
         )
 
         # ── 6. Conflict signals ──────────────────────────────────
@@ -198,6 +207,60 @@ class ComprehensiveDecisionAgent:
         return "range"
 
     @staticmethod
+    def _detect_long_cycle_bias(klines: list[dict[str, Any]] | None) -> str:
+        """检测长周期趋势偏向 (50/200 MA).
+
+        Returns: "bullish" | "bearish" | "neutral"
+        50 MA > 200 MA → bullish; 50 MA < 200 MA → bearish
+        """
+        if not klines or len(klines) < 200:
+            return "neutral"
+
+        closes = [float(k["close"]) for k in klines]
+
+        # 50-period MA
+        ma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else None
+        # 200-period MA
+        ma200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else None
+
+        if ma50 is None or ma200 is None:
+            return "neutral"
+
+        if ma50 > ma200 * 1.01:
+            return "bullish"
+        if ma50 < ma200 * 0.99:
+            return "bearish"
+        return "neutral"
+
+    @staticmethod
+    def _compute_multi_timeframe_score(
+        klines_1h: list[dict[str, Any]] | None,
+    ) -> float:
+        """多时间框架一致性检测 (1h 内模拟 4h/1d 趋势).
+
+        当前仅用 1h K 线模拟 — 完整版需接入 4h/1d 数据源。
+        Returns 0.0-1.0 一致性分数。
+        """
+        if not klines_1h or len(klines_1h) < 24:
+            return 0.5  # 数据不足，中性
+
+        # 用最近 4 根和 24 根 1h K 线模拟 4h/1d 趋势
+        closes_24 = [float(k["close"]) for k in klines_1h[-24:]]
+        closes_4 = [float(k["close"]) for k in klines_1h[-4:]]
+
+        slope_1d = (closes_24[-1] - closes_24[0]) / closes_24[0] * 100
+        slope_4h = (closes_4[-1] - closes_4[0]) / closes_4[0] * 100
+
+        # 方向一致性
+        if slope_1d > 1 and slope_4h > 0.5:
+            return 0.9  # 多周期共振看多
+        if slope_1d < -1 and slope_4h < -0.5:
+            return 0.9  # 多周期共振看空
+        if (slope_1d > 0 and slope_4h > 0) or (slope_1d < 0 and slope_4h < 0):
+            return 0.7  # 方向一致但强度不足
+        return 0.3  # 方向背离
+
+    @staticmethod
     def _extract_news_direction(news_report: dict[str, Any] | None) -> str:
         """Extract aggregate news direction."""
         if not news_report or not news_report.get("reports"):
@@ -271,18 +334,18 @@ class ComprehensiveDecisionAgent:
         scoring_report: Any,
         klines: list[dict[str, Any]] | None,
     ) -> str:
-        """Build entry condition — NOT "buy now"."""
-        if direction == "wait" or fs < 60:
+        """Build entry condition — 包含具体价格/指标数值."""
+        if direction == "wait":
+            if fs >= 50:
+                return "接近阈值，等待技术面/资金流确认信号"
             return "未达交易阈值，等待信号确认"
 
+        if not klines or len(klines) < 5:
+            return "等待明确入场信号"
+
+        recent_close = float(klines[-1]["close"])
         parts: list[str] = []
 
-        # Price level suggestion
-        if klines and len(klines) >= 5:
-            recent_close = float(klines[-1]["close"])
-            parts.append(f"价格确认在 {recent_close:.0f} 附近企稳")
-
-        # Indicators condition
         s = scoring_report.scores
         if s.technical_score > 70:
             parts.append("技术指标共振（RSI+MACD+MA方向一致）")
@@ -290,11 +353,14 @@ class ComprehensiveDecisionAgent:
             parts.append("新闻事件支持（利好确认）")
         if s.kline_score > 70:
             parts.append("K线形态突破确认后入场")
+        if s.fund_flow_score > 65:
+            parts.append("资金流入确认放量")
 
         if market_state == "trend":
-            parts.insert(0, "回踩不破EMA21时入场")
+            entry_pct = 0.99
+            parts.insert(0, f"回踩 $" + format(int(recent_close * entry_pct), ",") + f" 不破时入场")
         elif market_state == "range":
-            parts.insert(0, "突破震荡区间上沿且放量时入场")
+            parts.insert(0, f"突破 $" + format(int(recent_close * 1.005), ",") + " 且放量时入场")
 
         return "；".join(parts) if parts else "等待明确入场信号"
 
@@ -333,27 +399,30 @@ class ComprehensiveDecisionAgent:
         klines: list[dict[str, Any]] | None,
         indicators: dict[str, Any] | None,
     ) -> str:
-        """Build stop loss condition."""
+        """Build stop loss — 基于 ATR 的动态止损."""
         if direction == "wait":
             return "N/A"
 
-        parts: list[str] = []
-        if klines and len(klines) >= 5:
-            recent_close = float(klines[-1]["close"])
-            parts.append(f"固定止损 {recent_close * 0.95:.0f}（-5%）")
+        if not klines or len(klines) < 5:
+            return "N/A"
 
-        ema = (indicators or {}).get("ema_21")
-        if ema:
-            parts.append(f"EMA21 移动止损 ({ema:.0f})")
-
+        recent_close = float(klines[-1]["close"])
         atr = (indicators or {}).get("atr")
-        if atr and klines:
-            close = float(klines[-1]["close"])
-            parts.append(f"1.5×ATR 止损 ({close - 1.5 * atr:.0f})")
 
-        if market_state == "trend":
-            return f"EMA21 移动止损（{ema:.0f}）或 -5% 固定止损"
-        return " 或 ".join(parts) if parts else "未设置止损"
+        # 基于 ATR 的止损: 2×ATR 为标准，震荡市收紧到 1.5×ATR
+        if atr and atr > 0:
+            atr_mult = 1.5 if market_state == "range" else 2.0
+            atr_stop = recent_close - atr_mult * atr
+            atr_stop_pct = round(atr_mult * atr / recent_close * 100, 1)
+            return (
+                f"{atr_stop:.0f} ({atr_mult}×ATR ≈ -{atr_stop_pct}%)"
+                f"{'- 震荡市收紧' if market_state == 'range' else ''}"
+            )
+
+        # 无 ATR 时回退到固定百分比
+        stop_pct = 3 if market_state == "range" else 5
+        stop_price = recent_close * (1 - stop_pct / 100)
+        return f"{stop_price:.0f} (-{stop_pct}%)"
 
     @staticmethod
     def _build_take_profit(

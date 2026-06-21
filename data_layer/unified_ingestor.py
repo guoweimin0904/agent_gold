@@ -31,7 +31,26 @@ class DataIngestor:
         # X requires bearer token — will auto-mark missing without it
         self.xwatch = XWatchlistData(bearer_token=None)
 
-        self.symbols = ["BTCUSDT", "ETHUSDT"]
+        # 监控标的: Top 10+ 加密资产
+        self.symbols = [
+            "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+            "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT",
+        ]
+        # CoinGecko coin_id 映射
+        self.cg_coin_map = {
+            "BTCUSDT": "bitcoin",
+            "ETHUSDT": "ethereum",
+            "SOLUSDT": "solana",
+            "BNBUSDT": "binancecoin",
+            "XRPUSDT": "ripple",
+            "ADAUSDT": "cardano",
+            "DOGEUSDT": "dogecoin",
+            "AVAXUSDT": "avalanche-2",
+            "DOTUSDT": "polkadot",
+            "LINKUSDT": "chainlink",
+        }
+        # 主力交易对: 做完整决策链
+        self.primary_symbol = "BTCUSDT"
 
     def ingest(self) -> MarketSnapshot:
         """Fetch all data, build snapshot, write to disk, return snapshot."""

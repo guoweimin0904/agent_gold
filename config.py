@@ -23,6 +23,16 @@ class NewsAPIConfig:
     api_key = os.getenv("NEWS_API_KEY", "")
 
 
+class AShareConfig:
+    """A-Share data source config.
+
+    TUSHARE_TOKEN: 可选，用于 Tushare 备用数据源。
+    AKSHARE_ENABLED: 是否启用 AKShare（默认 true）。
+    """
+    tushare_token = os.getenv("TUSHARE_TOKEN", "")
+    akshare_enabled = os.getenv("AKSHARE_ENABLED", "true").strip().lower() == "true"
+
+
 class DataLayerConfig:
     request_timeout = int(os.getenv("DATA_REQUEST_TIMEOUT", "30"))
     retry_max = int(os.getenv("DATA_RETRY_MAX", "3"))
@@ -30,16 +40,6 @@ class DataLayerConfig:
 
 
 class ExecutionConfig:
-    """Execution gate configuration.
-
-    ENABLE_REAL_TRADING:      Must be explicitly set to 'true' for real trades.
-    EXECUTION_MODE:           'paper' | 'testnet' | 'real'
-    EXCHANGE_API_WITHDRAWAL:  Whether the API key has withdrawal permission.
-    EXCHANGE_IP_WHITELIST:    Comma-separated IPs or 'enabled' / 'disabled'.
-    STOP_LOSS_REQUIRED:       Whether stop-loss is mandatory (default true).
-    INVALID_COND_REQUIRED:    Whether invalid_condition is mandatory (default true).
-    POSITION_LIMIT_PCT:       Max position per symbol as % of capital.
-    """
     enable_real_trading = os.getenv("ENABLE_REAL_TRADING", "false").strip().lower() == "true"
     execution_mode = os.getenv("EXECUTION_MODE", "paper").strip().lower()
     exchange_api_withdrawal = os.getenv("EXCHANGE_API_WITHDRAWAL", "false").strip().lower() == "true"

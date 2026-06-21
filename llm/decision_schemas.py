@@ -128,37 +128,62 @@ def resolve_direction(
     backtest_win_rate: float = 0.0,
     news_direction: str = "neutral",
     scoring_decision: str = "avoid",
+    long_cycle_bias: str = "neutral",  # "bullish" | "bearish" | "neutral"
 ) -> Direction:
     """
     Resolve final direction from multi-modal inputs.
 
-    - vetoed → wait
-    - scoring_decision=avoid → wait
-    - final_score < 60 → wait
-    - final_score >= 80 + bullish confluence → long
-    - final_score 60-80 → direction depends on context
+    决策矩阵 (优化后):
+      - vetoed / avoid / score<45 → wait
+      - score 80+ trend/fomo → long
+      - score 65-79 trend → long; panic → short
+      - score 50-64 → 技术+资金+长周期确认后 long
+      - 长周期牛市中放宽做多条件
     """
     if vetoed:
         return "wait"
 
     if scoring_decision == "avoid":
+        if final_score >= 55:
+            return "wait"
         return "wait"
 
-    if final_score < 60:
+    # 低于 45 分：直接 wait
+    if final_score < 45:
         return "wait"
 
+    # 80+ 强信号
     if final_score >= 80:
         if market_state in ("trend", "fomo"):
             return "long"
+        if market_state == "range" and news_direction == "bullish":
+            return "long"
         return "wait"
 
-    # 60-80: check additional signals
-    if market_state == "panic":
+    # 65-79: 趋势/震荡中有信号则做多，恐慌中做空
+    if final_score >= 65:
+        if market_state == "panic":
+            return "short"
+        if market_state in ("trend", "fomo"):
+            return "long"
+        if market_state == "range" and news_direction == "bullish":
+            return "long"
+        if market_state == "range" and backtest_win_rate >= 0.45:
+            return "long"
         return "wait"
 
-    if news_direction == "bullish" and backtest_win_rate >= 0.5:
+    # 50-64: 需要技术+资金确认
+    if final_score >= 50:
+        if market_state == "panic":
+            return "wait"
+        if long_cycle_bias == "bullish" and market_state in ("trend", "range"):
+            if backtest_win_rate >= 0.4:
+                return "long"
+        if market_state == "trend" and news_direction == "bullish" and backtest_win_rate >= 0.45:
+            return "long"
+        return "wait"
+
+    # 45-49: 仅长牛+趋势+高胜率才做
+    if long_cycle_bias == "bullish" and market_state == "trend" and backtest_win_rate >= 0.5:
         return "long"
-    if news_direction == "bearish":
-        return "short" if final_score >= 70 else "wait"
-
     return "wait"

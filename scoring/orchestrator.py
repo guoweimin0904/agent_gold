@@ -90,7 +90,7 @@ class ScoringOrchestrator:
             dim_technical, dim_fund, dim_backtest, dim_risk,
         ]
 
-        # ── 2. Aggregate ─────────────────────────────────────────
+        # ── 2. Aggregate (加权) ──────────────────────────────────
         sub = SubScores(
             event_score=dim_event.score,
             sentiment_score=dim_sentiment.score,
@@ -100,9 +100,18 @@ class ScoringOrchestrator:
             backtest_score=dim_backtest.score,
             risk_deduction=dim_risk.score,
         )
-        raw = sub.raw_total
+        # 加权总分: 技术面1.5x, 资金流1.2x, 事件0.8x, 其余1.0x
+        weighted_total = (
+            dim_kline.score * 1.0
+            + dim_technical.score * 1.5
+            + dim_fund.score * 1.2
+            + dim_event.score * 0.8
+            + dim_sentiment.score * 1.0
+            + dim_backtest.score * 1.0
+        )
+        weight_sum = 1.0 + 1.5 + 1.2 + 0.8 + 1.0 + 1.0  # = 6.5
         deduction = sub.risk_deduction
-        final_score = max(0, min(100, (raw - deduction) / 6))
+        final_score = max(0, min(100, (weighted_total - deduction) / weight_sum * 6))
 
         # ── 3. Veto logic ────────────────────────────────────────
         veto = VetoInfo(vetoed=False)
